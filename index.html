@@ -220,11 +220,13 @@
   .bb-game .leaderboard-heading{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding-bottom:10px;border-bottom:1px solid var(--bb-line);flex-wrap:wrap}
   .bb-game .leaderboard-heading h3{margin:0;font-size:16px}
   .bb-game .leaderboard-heading span,.bb-game .leaderboard-status{color:var(--bb-muted);font-size:10px}
-  .bb-game .leaderboard-panels{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;margin-top:14px}
-  .bb-game .leaderboard-panel{min-width:0}
-  .bb-game .leaderboard-panel h4{margin:0;font-size:13px}
+  .bb-game .leaderboard-toggle{display:flex;gap:6px}
+  .bb-game .leaderboard-toggle button{min-height:32px;padding:4px 16px;border:1px solid var(--bb-line);background:transparent;color:var(--bb-muted);font-size:12px;font-weight:700;cursor:pointer}
+  .bb-game .leaderboard-toggle button:hover{border-color:var(--bb-ink)}
+  .bb-game .leaderboard-toggle button.active{background:var(--bb-green);border-color:var(--bb-green);color:#fff}
+  .bb-game .leaderboard-date{color:var(--bb-muted);font-size:10px;margin-left:8px;white-space:nowrap}
   .bb-game .leaderboard-columns,.bb-game .leaderboard-list li{display:grid;grid-template-columns:32px minmax(0,1fr) auto;gap:10px;align-items:center}
-  .bb-game .leaderboard-columns{margin-top:8px;color:var(--bb-muted);font:8px "DM Mono",monospace;letter-spacing:.04em}
+  .bb-game .leaderboard-columns{margin-top:14px;color:var(--bb-muted);font:8px "DM Mono",monospace;letter-spacing:.04em}
   .bb-game .leaderboard-list{display:grid;gap:7px;margin:7px 0 0;padding:0;list-style:none}
   .bb-game .leaderboard-list li{min-height:30px;font-size:12px}
   .bb-game .leaderboard-empty{grid-column:1 / -1;white-space:nowrap}
@@ -251,7 +253,6 @@
     .bb-game .control-hint{gap:7px;font-size:10px}
     .bb-game .keycap{min-width:73px;height:29px;font-size:9px}
     .bb-game .instruction{max-width:135px;font-size:9px}
-    .bb-game .leaderboard-panels{grid-template-columns:1fr;gap:18px}
   }
 
   /* About */
@@ -402,8 +403,8 @@
                 <h3 class="overlay-title" id="overlayTitle">ブロックを返そう</h3>
                 <p class="overlay-copy" id="overlayCopy">スペースを長押しで力をためて、離すとジャンプ。<br>ブロックを打ち返して、ラリーを続けよう。</p>
                 <form class="score-form" id="scoreForm" hidden>
-                  <label for="playerName">ランキングに登録する名前（12文字まで）</label>
-                  <input id="playerName" name="playerName" type="text" maxlength="12" autocomplete="nickname" required>
+                  <label for="playerName">ランキングに登録する名前（12文字まで・空欄なら「名無し」）</label>
+                  <input id="playerName" name="playerName" type="text" maxlength="12" autocomplete="nickname">
                   <button type="submit">スコアを登録</button>
                 </form>
                 <button class="start-button" id="startButton" type="button">ゲームスタート</button>
@@ -420,24 +421,15 @@
         <section class="leaderboard" aria-labelledby="leaderboardTitle">
           <div class="leaderboard-heading">
             <h3 id="leaderboardTitle">ランキング</h3>
-            <span>このブラウザー内の各上位10件</span>
+            <div class="leaderboard-toggle" role="group" aria-label="ランキングの期間切り替え">
+              <button type="button" class="active" data-ranking-mode="week" aria-pressed="true">今週</button>
+              <button type="button" data-ranking-mode="all" aria-pressed="false">総合</button>
+            </div>
           </div>
-          <div class="leaderboard-panels">
-            <section class="leaderboard-panel" aria-labelledby="scoreLeaderboardTitle">
-              <h4 id="scoreLeaderboardTitle">スコアランキング</h4>
-              <div class="leaderboard-columns" aria-hidden="true">
-                <span>RANK</span><span>NAME</span><span>SCORE</span>
-              </div>
-              <ol class="leaderboard-list" id="scoreLeaderboardList" aria-live="polite"></ol>
-            </section>
-            <section class="leaderboard-panel" aria-labelledby="comboLeaderboardTitle">
-              <h4 id="comboLeaderboardTitle">最大コンボランキング</h4>
-              <div class="leaderboard-columns" aria-hidden="true">
-                <span>RANK</span><span>NAME</span><span>MAX COMBO</span>
-              </div>
-              <ol class="leaderboard-list" id="comboLeaderboardList" aria-live="polite"></ol>
-            </section>
+          <div class="leaderboard-columns" aria-hidden="true">
+            <span>RANK</span><span>NAME</span><span>SCORE</span>
           </div>
+          <ol class="leaderboard-list" id="onlineLeaderboardList" aria-live="polite"></ol>
           <p class="leaderboard-status" id="leaderboardStatus" role="status"></p>
         </section>
       </div>
@@ -472,6 +464,7 @@
       if (push && location.hash !== '#/blockball') history.pushState(null, '', '#/blockball');
       // Let layout settle so the canvas ResizeObserver picks up the real size.
       requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
+      window.dispatchEvent(new Event('feathestar:show-game'));
     }
     function showPortfolio(anchor){
       const wasGame = !gameView.hidden;
@@ -579,13 +572,15 @@
       const soundButton = document.querySelector('#soundButton');
       const scoreForm = document.querySelector('#scoreForm');
       const playerNameInput = document.querySelector('#playerName');
-      const scoreLeaderboardList = document.querySelector('#scoreLeaderboardList');
-      const comboLeaderboardList = document.querySelector('#comboLeaderboardList');
+      const onlineLeaderboardList = document.querySelector('#onlineLeaderboardList');
       const leaderboardStatus = document.querySelector('#leaderboardStatus');
-      const leaderboardKey = 'block-volley-leaderboard-v1';
-      let scoreLeaderboard = [];
-      let comboLeaderboard = [];
-      let leaderboardAvailable = true;
+      const scoreSubmitButton = scoreForm.querySelector('button');
+      const rankingToggleButtons = document.querySelectorAll('[data-ranking-mode]');
+      const SUPABASE_URL = 'https://phostlmevtfkdimysnul.supabase.co';
+      const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBob3N0bG1ldnRma2RpbXlzbnVsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ4MzU3NTAsImV4cCI6MjExMDQxMTc1MH0.85P6DRQcUucoZOLCnJE7VfIn_8-uqATh7lxKEHkptDs';
+      const playerNameKey = 'blockball-player-name';
+      let rankingMode = 'week';
+      let scoreSubmitted = false;
 
       const game = {
         width: 960, height: 498, ground: 414, running: false, started: false,
@@ -946,123 +941,106 @@
         [...livesEl.children].forEach((life, index) => life.classList.toggle('lost', index >= game.lives));
       }
 
-      function sortScoreEntries(entries) {
-        return [...entries].sort((a, b) => b.score - a.score || b.maxCombo - a.maxCombo).slice(0, 10);
+      function weekStartIso() {
+        // 今週の開始 = 日本時間の月曜 0:00 を UTC の ISO 文字列で返す
+        const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
+        const nowJst = new Date(Date.now() + JST_OFFSET_MS);
+        const daysSinceMonday = (nowJst.getUTCDay() + 6) % 7;
+        const mondayJstMs = Date.UTC(nowJst.getUTCFullYear(), nowJst.getUTCMonth(), nowJst.getUTCDate() - daysSinceMonday);
+        return new Date(mondayJstMs - JST_OFFSET_MS).toISOString();
       }
 
-      function sortComboEntries(entries) {
-        return [...entries].sort((a, b) => b.maxCombo - a.maxCombo || b.score - a.score).slice(0, 10);
+      function supabaseHeaders() {
+        return { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY };
       }
 
-      function renderLeaderboardList(list, entries, metric) {
-        list.replaceChildren();
-        if (entries.length === 0) {
-          const item = document.createElement('li');
-          item.className = 'leaderboard-empty';
-          item.textContent = 'まだ記録がありません';
-          list.append(item);
+      function renderRankingMessage(message) {
+        onlineLeaderboardList.replaceChildren();
+        const item = document.createElement('li');
+        item.className = 'leaderboard-empty';
+        item.textContent = message;
+        onlineLeaderboardList.append(item);
+      }
+
+      function formatEntryDate(iso) {
+        const date = new Date(iso);
+        if (Number.isNaN(date.getTime())) return '';
+        return date.toLocaleDateString('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric' });
+      }
+
+      function renderRanking(entries) {
+        if (!Array.isArray(entries) || entries.length === 0) {
+          renderRankingMessage(rankingMode === 'week' ? '今週はまだ記録がありません' : 'まだ記録がありません');
           return;
         }
-        entries.forEach((entry, index) => {
+        onlineLeaderboardList.replaceChildren();
+        entries.slice(0, 10).forEach((entry, index) => {
           const item = document.createElement('li');
           const rank = document.createElement('span');
           const name = document.createElement('span');
+          const date = document.createElement('span');
           const value = document.createElement('span');
           rank.className = 'leaderboard-rank';
           rank.textContent = String(index + 1).padStart(2, '0');
           name.className = 'leaderboard-name';
           name.textContent = entry.name;
+          date.className = 'leaderboard-date';
+          date.textContent = formatEntryDate(entry.created_at);
+          name.append(date);
           value.className = 'leaderboard-score';
-          value.textContent = metric === 'score' ? String(entry.score).padStart(4, '0') : 'x ' + entry.maxCombo;
+          value.textContent = String(entry.score).padStart(4, '0');
           item.append(rank, name, value);
-          list.append(item);
+          onlineLeaderboardList.append(item);
         });
       }
 
-      function renderLeaderboard() {
-        renderLeaderboardList(scoreLeaderboardList, scoreLeaderboard, 'score');
-        renderLeaderboardList(comboLeaderboardList, comboLeaderboard, 'combo');
-      }
-
-      function normalizeLeaderboardEntries(entries) {
-        if (!Array.isArray(entries) || entries.some(entry =>
-          !entry || typeof entry.name !== 'string' || !entry.name.trim() ||
-          !Number.isSafeInteger(entry.score) || entry.score < 0 ||
-          (entry.maxCombo !== undefined && (!Number.isSafeInteger(entry.maxCombo) || entry.maxCombo < 0))
-        )) {
-          throw new Error('Invalid leaderboard data');
-        }
-        return entries.map(entry => ({
-          name: entry.name,
-          score: entry.score,
-          maxCombo: entry.maxCombo === undefined ? 0 : entry.maxCombo
-        }));
-      }
-
-      function loadLeaderboard() {
+      async function loadRanking() {
+        leaderboardStatus.textContent = 'ランキングを読み込み中…';
+        renderRankingMessage('読み込み中…');
         try {
-          const saved = localStorage.getItem(leaderboardKey);
-          if (saved !== null) {
-            const data = JSON.parse(saved);
-            if (Array.isArray(data)) {
-              const entries = normalizeLeaderboardEntries(data);
-              scoreLeaderboard = sortScoreEntries(entries);
-              comboLeaderboard = sortComboEntries(entries);
-            } else {
-              if (!data || !Array.isArray(data.scoreRanking) || !Array.isArray(data.comboRanking)) {
-                throw new Error('Invalid leaderboard data');
-              }
-              scoreLeaderboard = sortScoreEntries(normalizeLeaderboardEntries(data.scoreRanking));
-              comboLeaderboard = sortComboEntries(normalizeLeaderboardEntries(data.comboRanking));
-            }
-          }
+          let url = SUPABASE_URL + '/rest/v1/scores?select=name,score,created_at&order=score.desc,created_at.asc&limit=10';
+          if (rankingMode === 'week') url += '&created_at=gte.' + encodeURIComponent(weekStartIso());
+          const response = await fetch(url, { headers: supabaseHeaders() });
+          if (!response.ok) throw new Error('HTTP ' + response.status);
+          renderRanking(await response.json());
+          leaderboardStatus.textContent = rankingMode === 'week' ? '今週のランキングを表示中' : '総合ランキングを表示中';
         } catch (error) {
-          leaderboardAvailable = false;
-          leaderboardStatus.textContent = 'ランキングを読み込めません。ブラウザーの保存設定を確認してください。';
-          console.error('Failed to load the local leaderboard.', error);
+          console.error('Failed to load the online ranking.', error);
+          renderRankingMessage('ランキングを取得できませんでした');
+          leaderboardStatus.textContent = 'ランキングを取得できませんでした。通信環境を確認してください。';
         }
-        renderLeaderboard();
       }
 
-      function registerScore(event) {
+      function savedPlayerName() {
+        try { return localStorage.getItem(playerNameKey) || ''; } catch { return ''; }
+      }
+
+      async function registerScore(event) {
         event.preventDefault();
-        if (!leaderboardAvailable) return;
-        const name = playerNameInput.value.trim();
-        if (!name) {
-          playerNameInput.setCustomValidity('名前を入力してください。');
-          playerNameInput.reportValidity();
-          return;
-        }
-        playerNameInput.setCustomValidity('');
-        const newEntry = { name, score: game.score, maxCombo: game.maxCombo };
-        const updatedScoreLeaderboard = sortScoreEntries([...scoreLeaderboard, newEntry]);
-        const updatedComboLeaderboard = sortComboEntries([...comboLeaderboard, newEntry]);
-        const madeScoreLeaderboard = updatedScoreLeaderboard.includes(newEntry);
-        const madeComboLeaderboard = updatedComboLeaderboard.includes(newEntry);
+        if (scoreSubmitted) return;
+        const name = (playerNameInput.value.trim() || '名無し').slice(0, 12);
+        scoreSubmitted = true;
+        scoreSubmitButton.disabled = true;
+        scoreSubmitButton.textContent = '送信中…';
         try {
-          localStorage.setItem(leaderboardKey, JSON.stringify({
-            scoreRanking: updatedScoreLeaderboard,
-            comboRanking: updatedComboLeaderboard
-          }));
+          const response = await fetch(SUPABASE_URL + '/rest/v1/scores', {
+            method: 'POST',
+            headers: { ...supabaseHeaders(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+            body: JSON.stringify({ name, score: game.score })
+          });
+          if (!response.ok) throw new Error('HTTP ' + response.status);
+          try { localStorage.setItem(playerNameKey, name); } catch { /* 名前の記憶は任意 */ }
+          scoreForm.hidden = true;
+          overlayCopy.textContent = 'スコアを登録しました。ランキングを確認してみよう！';
+          leaderboardStatus.textContent = 'スコアを登録しました。';
+          loadRanking();
         } catch (error) {
-          leaderboardStatus.textContent = 'スコアを保存できません。ブラウザーの保存設定を確認してください。';
-          console.error('Failed to save the local leaderboard.', error);
-          return;
+          console.error('Failed to submit the score.', error);
+          scoreSubmitted = false;
+          scoreSubmitButton.disabled = false;
+          scoreSubmitButton.textContent = 'スコアを登録';
+          leaderboardStatus.textContent = 'スコアを送信できませんでした。通信環境を確認して、もう一度お試しください。';
         }
-        scoreLeaderboard = updatedScoreLeaderboard;
-        comboLeaderboard = updatedComboLeaderboard;
-        renderLeaderboard();
-        if (madeScoreLeaderboard && madeComboLeaderboard) {
-          leaderboardStatus.textContent = '両方のランキングに登録しました。';
-        } else if (madeScoreLeaderboard) {
-          leaderboardStatus.textContent = 'スコアランキングに登録しました。';
-        } else if (madeComboLeaderboard) {
-          leaderboardStatus.textContent = '最大コンボランキングに登録しました。';
-        } else {
-          leaderboardStatus.textContent = '今回はどちらのランキングにも入りませんでした。';
-        }
-        scoreForm.hidden = true;
-        overlayCopy.textContent = 'スコアを登録しました。ランキングを確認してみよう！';
       }
 
       function setCharge(value) {
@@ -1119,13 +1097,16 @@
         overlayKicker.textContent = 'RALLY OVER';
         overlayTitle.textContent = 'ナイスラリー！';
         overlayCopy.innerHTML = 'スコア <strong>' + String(game.score).padStart(4, '0') + '</strong>　・　最大コンボ x' + game.maxCombo + '<br>もう一度、ラリーに挑戦しよう。';
+        scoreSubmitted = false;
         scoreForm.hidden = false;
-        playerNameInput.value = '';
-        playerNameInput.disabled = !leaderboardAvailable;
-        scoreForm.querySelector('button').disabled = !leaderboardAvailable;
+        playerNameInput.value = savedPlayerName();
+        playerNameInput.disabled = false;
+        scoreSubmitButton.disabled = false;
+        scoreSubmitButton.textContent = 'スコアを登録';
         startButton.textContent = 'もう一度プレイ';
         overlay.hidden = false;
-        if (leaderboardAvailable) playerNameInput.focus();
+        loadRanking();
+        playerNameInput.focus();
       }
 
       function update(delta) {
@@ -1231,7 +1212,20 @@
       canvas.addEventListener('pointercancel', cancelCharge);
       startButton.addEventListener('click', startGame);
       scoreForm.addEventListener('submit', registerScore);
-      playerNameInput.addEventListener('input', () => playerNameInput.setCustomValidity(''));
+      rankingToggleButtons.forEach(button => {
+        button.addEventListener('click', () => {
+          const mode = button.getAttribute('data-ranking-mode');
+          if (mode === rankingMode) return;
+          rankingMode = mode;
+          rankingToggleButtons.forEach(b => {
+            const active = b === button;
+            b.classList.toggle('active', active);
+            b.setAttribute('aria-pressed', active ? 'true' : 'false');
+          });
+          loadRanking();
+        });
+      });
+      window.addEventListener('feathestar:show-game', loadRanking);
       soundButton.addEventListener('click', () => {
         game.sound = !game.sound;
         soundButton.setAttribute('aria-label', game.sound ? '音をオフにする' : '音をオンにする');
@@ -1254,7 +1248,7 @@
       });
 
       new ResizeObserver(resize).observe(wrap);
-      loadLeaderboard();
+      loadRanking();
       resize();
     })();
 </script>
